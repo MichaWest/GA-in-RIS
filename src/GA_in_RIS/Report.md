@@ -55,6 +55,84 @@ $$
 
 где $w_k$ - вес $k$-го направления 
 
+# Ускорение вычислений с помощью БПФ
+
+Прямой расчет поля по формуле двойной суммы требует $O(MN)$ операций для одного направления и $O((MN)^2)$ для полной картины рассеяния, что крайне неэффективно для больших апертур. Для ускорения используем двумерное дискретное преобразование Фурье (2D-БПФ).
+
+Введем переменные:
+
+$$u = \frac{k_0 d_x \sin\theta \cos\varphi}{2\pi}, \quad v = \frac{k_0 d_y \sin\theta \sin\varphi}{2\pi}$$
+
+Тогда выражение для поля принимает вид:
+
+$$E(u, v) = \cos \theta \sum_{m=0}^{M-1} \sum_{n=0}^{N-1} e^{j\varphi_{mn}} e^{j2\pi(mu + nv)}$$
+
+Это классическое двумерное дискретное преобразование Фурье (ДПФ) от матрицы $e^{j\varphi_{mn}}$.
+
+Таким образом, для вычисления всей картины рассеяния достаточно применить 2D-БПФ к матрице фазовых сдвигов:
+
+$$E(u, v) = \cos \theta \cdot \text{FFT2}\{e^{j\varphi_{mn}}\}$$
+
+Это снижает вычислительную сложность с $O((MN)^2)$ до $O(MN \log(MN))$, что критично для эффективной работы генетического алгоритма.
+
+**Важное замечание:** после применения БПФ полученная картина рассеяния определена в пространстве углов $(u, v)$, которые связаны с физическими углами $(\theta, \varphi)$ соотношениями:
+
+$$u = \frac{d_x}{\lambda} \sin\theta \cos\varphi, \quad v = \frac{d_y}{\lambda} \sin\theta \sin\varphi$$
+
+Диапазон $u \in [-0.5, 0.5]$, $v \in [-0.5, 0.5]$ соответствует всей полусфере.
+
+Метод `calculate_far_field_with_source` демонстрирует практическую реализацию этого подхода:
+
+```python
+def calculate_far_field_with_source(self,
+                                    coding_matrix: np.ndarray,
+                                    theta_source: float,
+                                    phi_source: float) -> np.ndarray:
+    # 1. Преобразование бинарной кодировки в фазу отражения
+    phase_reflection = np.where(coding_matrix == 0, np.pi, 0.0)
+    
+    # 2. Учет фазовой задержки от источника (если есть)
+    phase_source = self.k0 * (
+            self.m_indices * self.dx * sin_theta_src * cos_phi_src +
+            self.n_indices * self.dy * sin_theta_src * sin_phi_src
+    )
+    
+    # 3. Формирование комплексной матрицы отражения
+    total_phase = phase_reflection + phase_source
+    reflection_matrix = self.amplitude * np.exp(1j * total_phase)
+    
+    # 4. Вычисление поля рассеяния через 2D-БПФ
+    scattering = fftshift(ifft2(ifftshift(reflection_matrix)))
+    
+    # 5. Учет диаграммы направленности элемента (cos θ)
+    theta, phi = self.get_angles()
+    cos_theta = np.cos(theta)
+    far_field = scattering * cos_theta / denominator
+    
+    return far_field
+```
+
+Метод `get_angles` выполняет обратное преобразование из координат БПФ в физические углы $(\theta, \varphi)$
+
+```python
+def get_angles(self) -> Tuple[np.ndarray, np.ndarray]:
+    # Индексы БПФ соответствуют пространственным частотам
+    kx = np.arange(-M // 2, M // 2)
+    ky = np.arange(-N // 2, N // 2)
+    Kx, Ky = np.meshgrid(kx, ky)
+    
+    # Переход к безразмерным переменным u, v
+    u = Kx / (self.k0 * self.dx)
+    v = Ky / (self.k0 * self.dy)
+    
+    # Переход к физическим углам
+    r = np.sqrt(u ** 2 + v ** 2)
+    theta = np.arcsin(r)
+    phi = np.arctan2(v, u)
+    
+    return theta, phi
+```
+
 # Генетический алгоритм
 
 Простой генетический алгоритм состоит из трех операций 
