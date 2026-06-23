@@ -24,7 +24,10 @@ class MetasurfaceDesigner:
                 theta_source,
                 phi_source)
 
-            intensity = np.abs(scattering)**2
+            _, _, _, _, visible = self.calculator.get_uv_grid()
+
+            intensity = np.abs(scattering) ** 2 
+            intensity[~visible] = 0.0 
             P_total = np.sum(intensity)
 
             P_receivers = 0.0
@@ -34,7 +37,7 @@ class MetasurfaceDesigner:
                 weight= rec.get('weight', 1.0)
 
                 idx = self.__find_angle_index(theta, phi)
-                P_receivers += weight * intensity.flat[idx]
+                P_receivers += weight * intensity[idx]
 
             return - P_receivers / (P_total + 1e-10)
 
@@ -42,17 +45,16 @@ class MetasurfaceDesigner:
 
         return best_matrix, history
 
-    def __find_angle_index(self, theta: float, phi: float) -> int:
-        theta_grid, phi_grid = self.calculator.get_angles()
+    def __find_angle_index(self, theta: float, phi: float):
+        U,V, _, _, visible = self.calculator.get_uv_grid()
 
         u_target = np.sin(theta) * np.cos(phi)
         v_target = np.sin(theta) * np.sin(phi)
 
-        u_grid = np.sin(theta_grid) * np.cos(phi_grid)
-        v_grid = np.sin(theta_grid) * np.sin(phi_grid)
+        distances = (U - u_target) ** 2 + (V - v_target) ** 2
+        distances[~visible] = np.inf 
 
-        distances = (u_grid - u_target) ** 2 + (v_grid - v_target) ** 2
-        return int(np.argmin(distances))
+        return np.unravel_index(np.argmin(distances), distances.shape)
 
     def visualize_pattern_comparison(self,
                                      coding_matrix: np.ndarray,
@@ -69,10 +71,12 @@ class MetasurfaceDesigner:
             phi_source
         )
 
-        theta, phi = self.calculator.get_angles()
+        U, V, theta, phi, visible = self.calculator.get_uv_grid()
 
         F_real = np.abs(scattering)
+        F_real[~visible] = 0.0 
         F_real_norm = F_real / np.max(F_real)
+        F_real_norm[~visible] = np.nan
 
         F_desired = np.zeros_like(F_real)
         for rec in receivers:
@@ -81,9 +85,10 @@ class MetasurfaceDesigner:
             weight = rec.get('weight', 1.0)
 
             idx = self.__find_angle_index(theta_r, phi_r)
-            F_desired.flat[idx] = weight
+            F_desired[idx] = weight
 
         F_desired_norm = F_desired / np.max(F_desired)
+        F_desired_norm[~visible] = np.nan
 
         U = np.sin(theta) * np.cos(phi)
         V = np.sin(theta) * np.sin(phi)

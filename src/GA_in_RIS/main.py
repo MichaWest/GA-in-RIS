@@ -27,7 +27,7 @@ designer = MetasurfaceDesigner(config)
 
 receivers = [
         {'theta': 0.7854, 'phi': 0, 'weight': 1.0},
-        {'theta': -0.7854, 'phi': 0, 'weight': 1.0}
+        {'theta': 0.7854, 'phi': np.pi, 'weight': 1.0}
     ]
 
 matrix, history = designer.design_beam_steering(

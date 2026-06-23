@@ -16,9 +16,14 @@ class MetasurfaceConfig:
     amplitude_reflection: float = 0.95
 
     @property
+    def wavelength(self) -> float: 
+        c = 3e8 
+        return c / self.frequency
+
+    @property
     def k0(self) -> float:
         c = 3e8
-        return 2 * np.pi * self.frequency / c
+        return 2 * np.pi / self.wavelength
 
 class UnitCell:
     @staticmethod
@@ -49,12 +54,18 @@ class ScatteringCalculator:
         self.dy = config.dy
         self.k0 = config.k0
         self.amplitude = config.amplitude_reflection
+        self.wavelength = config.wavelength
 
-        self.m_indices, self.n_indices = np.meshgrid(
-            np.arange(self.M),
-            np.arange(self.N),
+        m = np.arange(self.M) - (self.M - 1) / 2
+        n = np.arange(self.N) - (self.N - 1) / 2
+
+        self.x_grid, self.y_grid = np.meshgrid(
+            m * self.dx, 
+            n * self.dy, 
             indexing='ij'
         )
+
+        self.U, self.V, self.theta_grid, self.phi_grid, self.visible_mask = self._build_uv_grid()
 
     def calculate_far_field(self, coding_matrix: np.ndarray) -> np.ndarray:
         return self.calculate_far_field_with_source(coding_matrix, 0.0, 0.0)
@@ -65,51 +76,46 @@ class ScatteringCalculator:
                                         phi_source: float) -> np.ndarray:
         phase_reflection = np.where(coding_matrix == 0, np.pi, 0.0)
 
-        sin_theta_src = np.sin(theta_source)
-        cos_phi_src = np.cos(phi_source)
-        sin_phi_src = np.sin(phi_source)
+        u_source = np.sin(theta_source) * np.cos(phi_source)
+        v_source = np.sin(theta_source) * np.sin(phi_source)
 
-        phase_source = self.k0 * (
-                self.m_indices * self.dx * sin_theta_src * cos_phi_src +
-                self.n_indices * self.dy * sin_theta_src * sin_phi_src
-        )
+        phase_source = - self.k0 * (self.x_grid * u_source + self.y_grid * v_source)
 
         total_phase = phase_reflection + phase_source
-        reflection_matrix = self.amplitude * np.exp(1j * total_phase)
+        aperture_field = self.amplitude * np.exp(1j * total_phase)
 
-        scattering = fftshift(ifft2(ifftshift(reflection_matrix)))
+        scattering = fftshift(ifft2(aperture_field)) 
 
-        theta, phi = self.get_angles()
-        cos_theta = np.cos(theta)
+        element_pattern = np.zeros_like(self.theta_grid, dtype=float)
+        element_pattern[self.visible_mask] = np.cos(self.theta_grid[self.visible_mask])
 
-        u = np.sin(theta) * np.cos(phi)
-        v = np.sin(theta) * np.sin(phi)
-
-        uv_sum_sq = u ** 2 + v ** 2
-        uv_sum_sq = np.clip(uv_sum_sq, 0, 1)
-
-        denominator = np.sqrt(1 - uv_sum_sq)
-        denominator[denominator < 1e-10] = 1e-10
-
-        far_field = scattering * cos_theta / denominator
+        far_field = scattering * element_pattern 
+        far_field[~self.visible_mask] = 0.0 
 
         return far_field
 
+    def _build_uv_grid(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        fx = np.fft.fftshift(np.fft.fftfreq(self.M, d=self.dx))
+        fy = np.fft.fftshift(np.fft.fftfreq(self.N, d=self.dy))
 
+        U, V = np.meshgrid(
+            self.wavelength * fx, 
+            self.wavelength * fy, 
+            indexing="ij"
+        )
+
+        radial_sq = U ** 2 + V ** 2 
+        visible = radial_sq <= 1.0 
+
+        theta = np.full_like(U, np.nan, dtype=float)
+        theta[visible] = np.arcsin(np.sqrt(radial_sq[visible]))
+
+        phi = np.arctan2(V, U)
+
+        return U, V, theta, phi, visible 
+
+    def get_uv_grid(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        return self.U, self.V, self.theta_grid, self.phi_grid, self.visible_mask
+    
     def get_angles(self) -> Tuple[np.ndarray, np.ndarray]:
-        M, N = self.M, self.N
-
-        kx = np.arange(-M // 2, M // 2)
-        ky = np.arange(-N // 2, N // 2)
-        Kx, Ky = np.meshgrid(kx, ky)
-
-        u = Kx / (self.k0 * self.dx)
-        v = Ky / (self.k0 * self.dy)
-
-        r = np.sqrt(u ** 2 + v ** 2)
-        r = np.clip(r, 0, 1)
-
-        theta = np.arcsin(r)
-        phi = np.arctan2(v, u)
-
-        return theta, phi
+        return self.theta_grid, self.phi_grid
