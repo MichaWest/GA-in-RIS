@@ -26,7 +26,7 @@ config = MetasurfaceConfig(M=40, N=40)
 designer = MetasurfaceDesigner(config)
 
 receivers = [
-        {'theta': np.pi / 6, 'phi': np.pi / 4, 'weight': 1.0},
+        {'theta': np.pi / 6, 'phi': np.pi / 2, 'weight': 1.0},
         {'theta': np.pi / 6, 'phi': 0, 'weight': 1.0},
     ]
 

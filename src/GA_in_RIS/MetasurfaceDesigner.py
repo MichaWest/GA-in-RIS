@@ -85,6 +85,8 @@ class MetasurfaceDesigner:
             phi_source
         )
 
+        D = self.calculator.calculate_directivity(scattering)
+
         U, V, theta, phi, visible = self.calculator.get_uv_grid()
 
         F_real = np.abs(scattering)
@@ -109,7 +111,7 @@ class MetasurfaceDesigner:
 
         fig = make_subplots(
             rows=1, cols=2,
-            subplot_titles=('Ожидаемая ДН', 'Полученная ДН'),
+            subplot_titles=('Ожидаемая ДН', f'Полученная ДН  <br> D={D:.2f} дБи'),
             specs=[[{'type': 'surface'}, {'type': 'surface'}]]
         )
 
