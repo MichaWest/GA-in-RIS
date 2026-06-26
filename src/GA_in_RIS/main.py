@@ -26,14 +26,18 @@ config = MetasurfaceConfig(M=40, N=40)
 designer = MetasurfaceDesigner(config)
 
 receivers = [
-        {'theta': 0.7854, 'phi': 0, 'weight': 1.0},
-        {'theta': 0.7854, 'phi': np.pi, 'weight': 1.0}
+        {'theta': np.pi / 6, 'phi': np.pi / 4, 'weight': 1.0},
+        {'theta': np.pi / 6, 'phi': 0, 'weight': 1.0},
     ]
 
 matrix, history = designer.design_beam_steering(
-    theta_source=0, phi_source=0,
-    receivers=receivers
+    theta_source=0,
+    phi_source=0,
+    receivers=receivers,
+    algo = 'deap'
 )
+
+print(history)
 
 visualize_coding_matrix(matrix, "Закодированная метаповерхность")
 designer.visualize_pattern_comparison(matrix, receivers)

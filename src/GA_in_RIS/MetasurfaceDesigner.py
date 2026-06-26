@@ -2,7 +2,7 @@ from typing import Tuple, List, Dict
 
 import numpy as np
 
-from src.GA_in_RIS.GeneticAlgorithm import GeneticAlgorithmOptimizer
+from src.GA_in_RIS.GeneticAlgorithm import GeneticAlgorithmOptimizer, DeapMetasurfaceOptimizer
 from src.GA_in_RIS.Metasurface import MetasurfaceConfig, ScatteringCalculator
 
 
@@ -11,12 +11,16 @@ class MetasurfaceDesigner:
                  config: MetasurfaceConfig):
         self.config = config
         self.calculator = ScatteringCalculator(config)
-        self.optimizer = GeneticAlgorithmOptimizer(config)
+        self.west_optimizer = GeneticAlgorithmOptimizer(config)
+        self.deap_optimizer = DeapMetasurfaceOptimizer(config)
+        self.M = config.M
+        self.N = config.N
 
     def design_beam_steering(self,
                              theta_source: float,
                              phi_source: float,
-                             receivers: List[Dict[str, float]]) -> Tuple[np.ndarray, np.ndarray]:
+                             receivers: List[Dict[str, float]],
+                             algo = "deap") -> Tuple[np.ndarray, np.ndarray]:
 
         def fitness_function(coding_matrix: np.ndarray) -> float:
             scattering = self.calculator.calculate_far_field_with_source(
@@ -39,9 +43,20 @@ class MetasurfaceDesigner:
                 idx = self.__find_angle_index(theta, phi)
                 P_receivers += weight * intensity[idx]
 
-            return - P_receivers / (P_total + 1e-10)
+                theta_sym = theta
+                phi_sym = (phi + np.pi) % (2 * np.pi)
+                idx_sym = self.__find_angle_index(theta_sym, phi_sym)
 
-        best_matrix, history = self.optimizer.optimize(fitness_function)
+                if idx != idx_sym:
+                    P_receivers += weight * intensity[idx_sym]
+
+            return P_receivers / (P_total + 1e-10)
+
+        match algo:
+            case "deap":
+                best_matrix, history = self.deap_optimizer.optimize(fitness_function)
+            case "west":
+                best_matrix, history = self.west_optimizer.optimize(fitness_function)
 
         return best_matrix, history
 
@@ -60,8 +75,7 @@ class MetasurfaceDesigner:
                                      coding_matrix: np.ndarray,
                                      receivers: List[Dict[str, float]],
                                      theta_source: float = 0,
-                                     phi_source: float = 0,
-                                     grid_size: int = 100) -> None:
+                                     phi_source: float = 0) -> None:
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
 

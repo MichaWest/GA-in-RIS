@@ -25,26 +25,6 @@ class MetasurfaceConfig:
         c = 3e8
         return 2 * np.pi / self.wavelength
 
-class UnitCell:
-    @staticmethod
-    def get_phase(state: int, polarization: str = 'x') -> float:
-        if polarization == 'x':
-            if state == 0:
-                return np.pi
-            else:
-                return 0.0
-        else:
-            if state == 0:
-                return 0.0
-            else:
-                return 0.0
-
-    @staticmethod
-    def get_complex_reflection(state: int, polarization: str = 'x') -> complex:
-        amplitude = 0.95  # Почти полное отражение
-        phase = UnitCell.get_phase(state, polarization)
-        return amplitude * np.exp(1j * phase)
-
 class ScatteringCalculator:
     def __init__(self, config: MetasurfaceConfig):
         self.config = config

@@ -1,15 +1,67 @@
-from typing import Callable
+import random
+from typing import Callable, Tuple
 
 import numpy as np
+from deap import creator, base, tools, algorithms
 
 from src.GA_in_RIS.Metasurface import MetasurfaceConfig, ScatteringCalculator
+
+class DeapMetasurfaceOptimizer:
+    def __init__(self, config: MetasurfaceConfig,
+                 population_size: int = 200,
+                 max_generations: int = 300,
+                 pc: float = 0.85,
+                 pm: float = 0.05):
+        self.config = config
+        self.M, self.N = config.M, config.N
+        self.flat_size = self.M * self.N
+
+        self.population_size = population_size
+        self.max_generation_size = max_generations
+
+        self.pc = pc
+        self.pm = pm
+
+        # Инициализация DEAP
+        creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+        creator.create("Individual", list, fitness=creator.FitnessMax)
+
+        self.toolbox = base.Toolbox()
+
+        self.toolbox.register("attr_bool", random.randint, 0, 1) # генерация бита фазы одной ячейки
+        self.toolbox.register("individual", tools.initRepeat, creator.Individual, self.toolbox.attr_bool, n=self.flat_size) # генерация всей RIS
+        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
+
+
+    def optimize(self, fitness_func: Callable) -> Tuple[np.ndarray, np.ndarray]:
+        def deap_fitness(individual):
+            mat = np.array(individual).reshape((self.M, self.N))
+            return fitness_func(mat),
+
+        self.toolbox.register("evaluate", deap_fitness)
+        self.toolbox.register("mate", tools.cxTwoPoint)
+        self.toolbox.register("mutate", tools.mutFlipBit, indpb= self.pm)
+        self.toolbox.register("select", tools.selTournament, tournsize=3)
+
+        population = self.toolbox.population(n=self.population_size)
+
+        for gen in range(self.max_generation_size):
+            offspring = algorithms.varAnd(population, self.toolbox, cxpb=self.pc, mutpb=self.pm)
+            fits = self.toolbox.map(self.toolbox.evaluate, offspring)
+            for fit, ind in zip(fits, offspring):
+                ind.fitness.values = fit
+            population = self.toolbox.select(offspring, k=len(population))
+
+        top = np.array(tools.selBest(population, k=1)).reshape((self.M, self.N))
+
+        return top, []
 
 
 class GeneticAlgorithmOptimizer:
     def __init__(self,
                  config: MetasurfaceConfig,
-                 population_size: int = 100,
-                 max_generations: int = 350,
+                 population_size: int = 200,
+                 max_generations: int = 300,
                  pc: float = 0.85, # Вероятность кроссовера
                  pm: float = 0.01, # Вероятность мутации
                  ):
@@ -31,16 +83,16 @@ class GeneticAlgorithmOptimizer:
         population = self.initialize_population()
 
         best_individual = None
-        best_fitness = float('inf')
+        best_fitness = -np.inf
         self.history = []
 
         for generation in range(self.max_generation_size):
             fitness_values = self.evaluate_population(population, fitness_func)
 
-            current_best_idx = np.argmin(fitness_values)
+            current_best_idx = np.argmax(fitness_values)
             current_best_fitness = fitness_values[current_best_idx]
 
-            if current_best_fitness < best_fitness:
+            if current_best_fitness > best_fitness:
                 best_fitness = current_best_fitness
                 best_individual = population[current_best_idx].copy()
 
@@ -52,6 +104,7 @@ class GeneticAlgorithmOptimizer:
 
             population = self.mutation(children)
 
+        print(len(population))
         return best_individual, np.array(self.history)
 
 
@@ -80,7 +133,7 @@ class GeneticAlgorithmOptimizer:
     '''
     def selection(self, population: np.ndarray,
                   fitness_values: np.ndarray) -> np.ndarray:
-        inverse_fitness = -fitness_values
+        inverse_fitness = fitness_values
         total_fitness = np.sum(inverse_fitness)
 
         if total_fitness <= 1e-10:
