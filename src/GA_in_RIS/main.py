@@ -20,7 +20,7 @@ def visualize_coding_matrix(coding_matrix: np.ndarray, title: str = "Матри�
     ax.set_ylabel('Cell Index M', fontsize=12)
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig("coding_matrix_RIS.png")
 
 config = MetasurfaceConfig(M=40, N=40)
 designer = MetasurfaceDesigner(config)

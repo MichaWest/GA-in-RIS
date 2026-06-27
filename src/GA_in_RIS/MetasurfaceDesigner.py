@@ -31,7 +31,9 @@ class MetasurfaceDesigner:
             _, _, _, _, visible = self.calculator.get_uv_grid()
 
             intensity = np.abs(scattering) ** 2 
-            intensity[~visible] = 0.0 
+            intensity[~visible] = 0.0
+            intensity = intensity / np.max(intensity)
+
             P_total = np.sum(intensity)
 
             P_receivers = 0.0
